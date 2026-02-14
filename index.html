@@ -53,7 +53,7 @@
 
         .msg-ai { background: #f1f5f9; color: #1e293b; border-bottom-left-radius: 4px; }
         .msg-user { background: #2563eb; color: white; margin-left: auto; border-bottom-right-radius: 4px; box-shadow: 0 10px 20px rgba(37, 99, 235, 0.15); }
-        .msg-error { background: #fee2e2; color: #991b1b; font-size: 12px; border: 1px solid #fecaca; width: 100%; max-width: 100%; border-radius: 12px; }
+        .msg-error { background: #fee2e2; color: #991b1b; font-size: 12px; border: 1px solid #fecaca; width: 100%; max-width: 100%; border-radius: 12px; margin-bottom: 15px; }
 
         .solution-box {
             background: white;
@@ -143,7 +143,7 @@
 
     <script>
         // STEP: Put your API key from https://aistudio.google.com/ here!
-        const apiKey = "AIzaSyCt-mVIXOGROzAs13fcLOeoz0PV2lkS2_A"; 
+        const apiKey = "AIzaSyCzVByBF6f_j3Lt5JZ2xM_qFVnmekQD334"; 
 
         let userProfile = {};
         let logs = [];
@@ -188,7 +188,7 @@
 
             if (apiKey === "") {
                 display('user', query);
-                display('error', "<b>Configuration Error:</b> API Key is empty. You must add your Gemini API Key in the code (const apiKey) for this to work on GitHub.");
+                display('error', "<b>Missing API Key:</b> You must paste your Gemini API key in the code (const apiKey).");
                 input.value = '';
                 return;
             }
@@ -198,33 +198,46 @@
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
-            const systemPrompt = `You are GyanSathi, a smart tutor created by bijaya. Student Level: Grade ${userProfile.grade}. Avoid all markdown characters like #, *, _, and \`. If asked about your creator, answer "bijaya". For math/science, use [Solution] for results and [Steps] for reasoning.`;
+            const systemPrompt = `You are GyanSathi, a smart tutor created by bijaya. Level: Grade ${userProfile.grade}. No markdown. If asked about creator, answer "bijaya". For math, use [Solution] and [Steps].`;
 
-            try {
-                // Changed to v1 endpoint (Stable)
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [...logs, { role: "user", parts: [{ text: systemPrompt + " User Request: " + query }] }]
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (data.error) throw new Error(data.error.message || "API Error");
+            // List of model identifiers to try
+            const modelsToTry = ["gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-pro"];
+            let success = false;
 
-                if (data.candidates && data.candidates[0].content.parts[0].text) {
-                    display('model', data.candidates[0].content.parts[0].text);
-                } else {
-                    throw new Error("No response generated.");
+            for (const modelName of modelsToTry) {
+                try {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [...logs, { role: "user", parts: [{ text: systemPrompt + " User Question: " + query }] }]
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.error) {
+                        // If model not found, try the next one in the loop
+                        if (data.error.message.includes("not found")) continue;
+                        throw new Error(data.error.message);
+                    }
+
+                    if (data.candidates && data.candidates[0].content.parts[0].text) {
+                        display('model', data.candidates[0].content.parts[0].text);
+                        success = true;
+                        break; // Stop loop on success
+                    }
+                } catch (e) {
+                    console.error(`Attempt with ${modelName} failed:`, e);
                 }
-            } catch (e) {
-                display('error', "<b>Error Log:</b> " + e.message + "<br><small>Check if your API key is active in Google AI Studio.</small>");
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-arrow-right"></i>';
             }
+
+            if (!success) {
+                display('error', "<b>Error:</b> Could not connect to Gemini models. Check your API key and permissions in Google AI Studio.");
+            }
+
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-arrow-right"></i>';
         }
 
         document.getElementById('userText').addEventListener('keypress', (e) => { if(e.key === 'Enter') sendQuery(); });
